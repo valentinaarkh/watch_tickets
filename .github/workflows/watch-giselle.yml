@@ -5,7 +5,12 @@ on:
     # Every 15 minutes, UTC. GitHub may delay scheduled runs under load —
     # treat this as "roughly every 15 min," not exact.
     - cron: '*/15 * * * *'
-  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      always_notify:
+        description: 'Send a message on every check (even "no seats found")'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # needed so the workflow can commit last_state.json back
@@ -47,10 +52,9 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # Set the repo variable ALWAYS_NOTIFY to "true" to get a message on
-          # every check (useful to confirm the workflow is really running),
-          # or "false"/unset for the normal "only notify on change" behavior.
-          ALWAYS_NOTIFY: ${{ vars.ALWAYS_NOTIFY }}
+          # Checked box on a manual "Run workflow" click wins. Otherwise falls
+          # back to the ALWAYS_NOTIFY repo variable (used on scheduled runs).
+          ALWAYS_NOTIFY: ${{ github.event.inputs.always_notify || vars.ALWAYS_NOTIFY || 'false' }}
         run: python watch_giselle.py --once
 
       - name: Persist state back to the repo
