@@ -2,9 +2,14 @@ name: Watch Giselle Tickets
 
 on:
   schedule:
-    # Every 15 minutes, UTC. GitHub may delay scheduled runs under load —
-    # treat this as "roughly every 15 min," not exact.
-    - cron: '*/15 * * * *'
+    # Every 30 minutes (at :07 and :37, offset from the busy :00/:30 marks
+    # to reduce queueing delay), but only during 06:00-20:59 UTC, which is
+    # 09:00-23:59 Vilnius time (UTC+3 in summer / EEST). This skips the
+    # 00:00-09:00 local "night" window.
+    # NOTE: UTC doesn't shift for daylight saving. When Lithuania switches
+    # to EET (UTC+2) in late October, this window will drift an hour
+    # later locally (effectively 10:00-00:59) until you update it back.
+    - cron: '7,37 6-20 * * *'
   workflow_dispatch:
     inputs:
       always_notify:
