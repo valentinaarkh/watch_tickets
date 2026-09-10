@@ -47,6 +47,10 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Set the repo variable ALWAYS_NOTIFY to "true" to get a message on
+          # every check (useful to confirm the workflow is really running),
+          # or "false"/unset for the normal "only notify on change" behavior.
+          ALWAYS_NOTIFY: ${{ vars.ALWAYS_NOTIFY }}
         run: python watch_giselle.py --once
 
       - name: Persist state back to the repo
