@@ -258,7 +258,7 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
-async def run_once(debug=False):
+async def run_once(debug=False, always_notify=False):
     state = load_state()
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=not debug)
@@ -267,22 +267,27 @@ async def run_once(debug=False):
             key = event["url"]
             found_count = len(result["findings"])
             prev_count = state.get(key, {}).get("found_count", 0)
+            changed = found_count != prev_count
 
             print(f"[{datetime.now().isoformat(timespec='seconds')}] {event['label']}: "
                   f"{result['seat_count']} seats parsed, {found_count} adjacent-pair groups found")
 
-            if found_count > 0:
-                # Only ping if this is new (avoid spamming every 15 min for the same seats)
-                if found_count != prev_count:
-                    lines = [f"🎭 <b>{event['label']}</b>", "Possible adjacent seats found:"]
-                    for row, run in result["findings"][:10]:
-                        lines.append(f"  Row {row}: seats {run[0]}-{run[-1]} ({len(run)} in a row)")
-                    lines.append(event["url"])
-                    send_telegram_message("\n".join(lines))
-                    if result["screenshot"]:
-                        send_telegram_photo(result["screenshot"], f"Seat map: {event['label']}")
-                else:
-                    print("  (same as last check, not re-notifying)")
+            if found_count > 0 and (changed or always_notify):
+                lines = [f"🎭 <b>{event['label']}</b>", "Possible adjacent seats found:"]
+                for row, run in result["findings"][:10]:
+                    lines.append(f"  Row {row}: seats {run[0]}-{run[-1]} ({len(run)} in a row)")
+                lines.append(event["url"])
+                send_telegram_message("\n".join(lines))
+                if result["screenshot"]:
+                    send_telegram_photo(result["screenshot"], f"Seat map: {event['label']}")
+            elif found_count > 0:
+                print("  (same as last check, not re-notifying)")
+            elif always_notify:
+                # Temporary "heartbeat" mode: confirm the check ran even when nothing was found.
+                send_telegram_message(
+                    f"🔍 <b>{event['label']}</b>\nChecked — no adjacent free seats right now "
+                    f"({result['seat_count']} seats parsed)."
+                )
 
             state[key] = {"found_count": found_count, "checked_at": datetime.now().isoformat()}
         await browser.close()
@@ -299,7 +304,13 @@ def main():
     parser.add_argument("--test-telegram", action="store_true",
                          help="Send a test message immediately, bypassing all scraping logic, "
                               "to verify your TELEGRAM_TOKEN / CHAT_ID are correct")
+    parser.add_argument("--always-notify", action="store_true",
+                         help="Send a Telegram message on every check (even 'no seats found'), "
+                              "instead of only when results change. Useful to confirm the bot "
+                              "is actually running. Can also be set via ALWAYS_NOTIFY=true.")
     args = parser.parse_args()
+
+    always_notify = args.always_notify or os.environ.get("ALWAYS_NOTIFY", "").lower() in ("1", "true", "yes")
 
     if not TELEGRAM_TOKEN or not CHAT_ID:
         print("!! Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID as environment variables before running "
@@ -311,12 +322,15 @@ def main():
         send_telegram_message("✅ Test message from watch_giselle.py — your bot is wired up correctly!")
         return
 
+    if always_notify:
+        print("[info] --always-notify / ALWAYS_NOTIFY is ON: a message will be sent on every check.")
+
     if args.once or args.debug:
-        asyncio.run(run_once(debug=args.debug))
+        asyncio.run(run_once(debug=args.debug, always_notify=always_notify))
     else:
         async def loop():
             while True:
-                await run_once()
+                await run_once(always_notify=always_notify)
                 await asyncio.sleep(args.interval)
         asyncio.run(loop())
 
